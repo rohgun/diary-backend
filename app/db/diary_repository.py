@@ -1,8 +1,10 @@
 from datetime import datetime, date
 from bson import ObjectId
+from bson.errors import InvalidId
 from typing import List, Optional
 from app.db.mongo import db
 from app.schemas.diary import DiaryCreate, DiaryResponse
+from fastapi import HTTPException
 
 diary_collection = db["diaries"]
 
@@ -20,6 +22,14 @@ def serialize(d: dict) -> dict:
         "feedback": d.get("feedback", "감정 분석에 실패했습니다."),
         "created_at": d.get("created_at"),
     }
+
+# ✅ 유효한 ObjectId인지 검사하는 함수
+def is_valid_object_id(id_str: str) -> bool:
+    try:
+        ObjectId(id_str)
+        return True
+    except InvalidId:
+        return False
 
 # ✅ 일기 생성 함수
 async def create_diary(
@@ -49,7 +59,7 @@ async def create_diary(
 # ✅ 사용자 전체 일기 조회
 async def get_user_diaries(user_id: str) -> List[DiaryResponse]:
     diaries = []
-    async for doc in diary_collection.find({"user_id": user_id}).sort("date", -1):  # 문자열로 조회
+    async for doc in diary_collection.find({"user_id": user_id}).sort("date", -1):
         diaries.append(DiaryResponse(**serialize(doc)))
     return diaries
 
@@ -68,6 +78,13 @@ async def get_diary_by_date(user_id: str, target_date: date) -> Optional[DiaryRe
 
 # ✅ id 기준 일기 조회
 async def get_diary_by_id(user_id: str, diary_id: str) -> Optional[DiaryResponse]:
+    # Clean the diary_id
+    diary_id = diary_id.strip()
+
+    # Validate the diary_id
+    if not is_valid_object_id(diary_id):
+        raise HTTPException(status_code=400, detail="Invalid diary ID provided.")
+
     doc = await diary_collection.find_one({
         "_id": ObjectId(diary_id),
         "user_id": user_id
@@ -97,6 +114,7 @@ async def update_diary(user_id: str, diary_id: str, diary: DiaryCreate) -> Optio
     if result:
         return DiaryResponse(**serialize(result))
     return None
+
 # ✅ 일기 삭제 (id 기준)
 async def delete_diary(user_id: str, diary_id: str) -> bool:
     result = await diary_collection.delete_one({
