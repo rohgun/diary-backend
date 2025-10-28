@@ -6,7 +6,7 @@ from app.models.user import (
     verify_user_credentials,
     get_user_by_email,   # ✅ 추가
 )
-from app.db.user_repository import delete_user
+from app.models.user import delete_user_by_id
 from app.auth.jwt import create_access_token, get_current_user_id
 from datetime import timedelta
 from pydantic import BaseModel
@@ -79,7 +79,7 @@ async def login(user: UserLogin):
 @router.delete("/delete-account", summary="회원 탈퇴", description="현재 로그인한 계정을 삭제합니다.")
 async def delete_account(user_id: str = Depends(get_current_user_id)):
     try:
-        deleted = await delete_user(user_id)
+        deleted = await delete_user_by_id(user_id)
         if not deleted:
             raise HTTPException(status_code=404, detail="사용자를 찾을 수 없습니다.")
         return {"message": "회원 탈퇴가 완료되었습니다."}

@@ -10,7 +10,8 @@ from app.auth.jwt import get_current_user_id
 from app.routes.health import router as health_router
 
 # MongoDB 연결 관련
-from app.db import connect_to_mongo, close_mongo_connection
+from app.db.mongo import connect_to_mongo, close_mongo_connection
+
 
 # -----------------------------------------------------
 # 환경 변수 로드 (.env → 로컬 테스트 시)
@@ -58,15 +59,12 @@ async def ping():
 # 서버 시작/종료 시 MongoDB 연결
 # -----------------------------------------------------
 @app.on_event("startup")
-async def startup_event():
+async def startup():
     await connect_to_mongo()
-    print("✅ MongoDB Atlas 연결 완료")
-
 
 @app.on_event("shutdown")
-async def shutdown_event():
+async def shutdown():
     await close_mongo_connection()
-    print("❎ MongoDB 연결 종료")
 
 
 # -----------------------------------------------------
