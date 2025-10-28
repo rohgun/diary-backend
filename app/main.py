@@ -4,9 +4,10 @@ from fastapi.openapi.utils import get_openapi  # ✅ 추가
 from app.routes import auth, diary, stats
 from app.auth.jwt import get_current_user_id
 from app.db import client
+from app.routes.health import router as health_router
 
 app = FastAPI()
-
+app.include_router(health_router, prefix="/health", tags=["Health"])
 # ✅ CORS 설정
 app.add_middleware(
     CORSMiddleware,
@@ -60,8 +61,4 @@ def custom_openapi():
     return openapi_schema
 
 app.openapi = custom_openapi
-# ✅ DB 헬스체크 라우트 추가
-@app.get("/health/db", tags=["Health"])
-async def health_db():
-    await client.admin.command("ping")
-    return {"ok": True}
+
