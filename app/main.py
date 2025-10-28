@@ -7,7 +7,7 @@ from app.db import client
 from app.routes.health import router as health_router
 
 app = FastAPI()
-app.include_router(health_router, prefix="/health", tags=["Health"])
+app.include_router(health_router, tags=["Health"])
 # ✅ CORS 설정
 app.add_middleware(
     CORSMiddleware,
