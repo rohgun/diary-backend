@@ -4,23 +4,14 @@ from fastapi.openapi.utils import get_openapi
 from dotenv import load_dotenv
 import os
 
-# 라우터 임포트
-from app.routes import auth, diary, stats
-from app.auth.jwt import get_current_user_id
-from app.routes.health import router as health_router
-
 # MongoDB 연결 관련
 from app.db.mongo import connect_to_mongo, close_mongo_connection
 
-
 # -----------------------------------------------------
-# 환경 변수 로드 (.env → 로컬 테스트 시)
+# 환경 변수 로드
 # -----------------------------------------------------
 load_dotenv()
 
-# -----------------------------------------------------
-# FastAPI 앱 초기화
-# -----------------------------------------------------
 app = FastAPI(title="Emotion Diary API")
 
 # -----------------------------------------------------
@@ -28,19 +19,11 @@ app = FastAPI(title="Emotion Diary API")
 # -----------------------------------------------------
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # 개발 중에는 * 허용, 배포 시에는 특정 도메인만!
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-# -----------------------------------------------------
-# 라우터 등록
-# -----------------------------------------------------
-app.include_router(health_router, tags=["Health"])
-app.include_router(auth.router, prefix="/auth", tags=["Auth"])
-app.include_router(diary.router, prefix="/diary", tags=["Diary"])
-app.include_router(stats.router, prefix="/diary", tags=["Stats"])
 
 # -----------------------------------------------------
 # 기본 라우트
@@ -61,10 +44,22 @@ async def ping():
 @app.on_event("startup")
 async def startup():
     await connect_to_mongo()
+    print("✅ MongoDB 연결 완료")
+
+    # ✅ 여기서 라우터를 import하고 등록하면 user.py가 이미 연결된 상태에서 로드됨
+    from app.routes import auth, diary, stats
+    from app.routes.health import router as health_router
+
+    app.include_router(health_router, tags=["Health"])
+    app.include_router(auth.router, prefix="/auth", tags=["Auth"])
+    app.include_router(diary.router, prefix="/diary", tags=["Diary"])
+    app.include_router(stats.router, prefix="/diary", tags=["Stats"])
+
 
 @app.on_event("shutdown")
 async def shutdown():
     await close_mongo_connection()
+    print("❎ MongoDB 연결 해제")
 
 
 # -----------------------------------------------------
@@ -82,14 +77,9 @@ def custom_openapi():
     )
 
     openapi_schema["components"]["securitySchemes"] = {
-        "BearerAuth": {
-            "type": "http",
-            "scheme": "bearer",
-            "bearerFormat": "JWT"
-        }
+        "BearerAuth": {"type": "http", "scheme": "bearer", "bearerFormat": "JWT"}
     }
 
-    # 모든 엔드포인트에 기본 BearerAuth 적용
     for path in openapi_schema["paths"].values():
         for method in path.values():
             method["security"] = [{"BearerAuth": []}]
