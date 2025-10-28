@@ -1,5 +1,6 @@
 # app/db/mongo.py
 import os
+import certifi
 from motor.motor_asyncio import AsyncIOMotorClient
 from pymongo.server_api import ServerApi
 from dotenv import load_dotenv
@@ -17,6 +18,8 @@ async def connect_to_mongo():
     try:
         client = AsyncIOMotorClient(
             MONGO_URI,
+             tls=True,                         # 명시
+        tlsCAFile=certifi.where(), 
             server_api=ServerApi('1'),
             serverSelectionTimeoutMS=5000,
             uuidRepresentation="standard",
