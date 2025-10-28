@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi  # ✅ 추가
 from app.routes import auth, diary, stats
 from app.auth.jwt import get_current_user_id
+from app.db import client
 
 app = FastAPI()
 
@@ -59,3 +60,8 @@ def custom_openapi():
     return openapi_schema
 
 app.openapi = custom_openapi
+# ✅ DB 헬스체크 라우트 추가
+@app.get("/health/db", tags=["Health"])
+async def health_db():
+    await client.admin.command("ping")
+    return {"ok": True}
