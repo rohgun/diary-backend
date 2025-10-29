@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
 from dotenv import load_dotenv
 import os
+import importlib.metadata as md
 
 # MongoDB 연결 관련
 from app.db.mongo import connect_to_mongo, close_mongo_connection
@@ -44,7 +45,8 @@ async def ping():
 @app.on_event("startup")
 async def startup():
     await connect_to_mongo()
-    print("✅ MongoDB 연결 완료")
+    print("[versions] bcrypt=", md.version("bcrypt"), "passlib=", md.version("passlib"))
+    await connect_to_mongo()
 
     # ✅ 여기서 라우터를 import하고 등록하면 user.py가 이미 연결된 상태에서 로드됨
     from app.routes import auth, diary, stats
