@@ -6,7 +6,7 @@ from bson import ObjectId
 # 전역 설정
 # ====================================================
 # bcrypt → passlib context로 관리
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+pwd_context = CryptContext(schemes=["argon2"], deprecated="auto")
 
 
 # ====================================================
