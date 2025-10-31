@@ -99,3 +99,21 @@ async def delete_diary_route(
         return {"message": "일기가 성공적으로 삭제되었습니다."}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"일기 삭제 중 오류 발생: {str(e)}")
+# ==================================================
+# ✅ 일기 수정 (id 기준)
+# ==================================================
+from app.models.diary import update_diary_by_id
+
+@router.put("/diary/{diary_id}", response_model=DiaryResponse)
+async def update_diary_route(
+    diary_id: str,
+    diary: DiaryCreate,
+    user_id: str = Depends(get_current_user_id)
+):
+    try:
+        updated = await update_diary_by_id(user_id, diary_id, diary)
+        if not updated:
+            raise HTTPException(status_code=404, detail="수정할 일기를 찾을 수 없습니다.")
+        return updated
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"일기 수정 중 오류 발생: {str(e)}")
