@@ -1,3 +1,4 @@
+# app/services/resource.py
 from typing import Dict, List, Any
 
 # ==================================================
@@ -39,26 +40,24 @@ BASE_RESOURCES: Dict[str, Dict[str, List[Dict[str, str]]]] = {
     },
 }
 
-
 # ==================================================
-# ✅ 위험도에 따라 리소스 반환
+# ✅ 섹션 형태(dict of lists)로 반환
 # ==================================================
 def get_resources(risk_level: str) -> Dict[str, List[Dict[str, str]]]:
     """
-    위험 수준(risk_level)에 맞는 도움 리소스를 반환.
-    - 없거나 잘못된 값이 들어오면 'none' 기본값 사용
+    위험 수준(risk_level)에 맞는 섹션형 리소스를 반환.
+    - hotlines / links / quick_calm 세 섹션을 dict로 반환
     """
     level = (risk_level or "none").lower()
     return BASE_RESOURCES.get(level, BASE_RESOURCES["none"])
 
-
 # ==================================================
-# ✅ 일기 API용 단축 함수 (이름 일관화용)
+# ✅ 일기 API 스키마용: 하나의 리스트로 평탄화
 # ==================================================
 def get_safety_resources(risk_level: str = "none") -> List[Dict[str, Any]]:
     """
-    diary.py에서 risk_level에 따라 상담/도움 리소스를 삽입할 때 사용.
-    - 반환값은 통합 리스트 (hotlines + links + quick_calm)
+    DiaryResponse.risk_resources (List[dict])에 바로 들어갈 형태로
+    섹션들을 하나의 리스트로 합쳐서 반환.
     """
     base = get_resources(risk_level)
     return base.get("hotlines", []) + base.get("links", []) + base.get("quick_calm", [])

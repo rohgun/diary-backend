@@ -6,15 +6,16 @@ from datetime import date as Date, datetime
 from app.schemas.diary import DiaryCreate, DiaryResponse
 from app.services.emotion_analysis import analyze_emotion
 from app.auth.jwt import get_current_user_id
-from app.models import diary as diary_model  # ✅ 안전한 import 방식
+from app.models import diary as diary_model  # 모델 계층
 
-router = APIRouter(tags=["Diary"])
+# ✅ 여기서 prefix="/diary"로 고정하고, 엔드포인트들은 "/"부터 시작합니다.
+router = APIRouter(prefix="/diary", tags=["Diary"])
 
 
 # ==================================================
 # ✅ 일기 저장 (AI 감정 분석 포함)
 # ==================================================
-@router.post("/diary", response_model=DiaryResponse)
+@router.post("", response_model=DiaryResponse)
 async def create_diary_route(
     diary: DiaryCreate,
     user_id: str = Depends(get_current_user_id),
@@ -32,10 +33,13 @@ async def create_diary_route(
             score=analysis.get("score", 5),
             feedback=analysis.get("feedback", ""),
             risk_level=analysis.get("risk_level", "none"),
-            risk_resources=analysis.get("risk_resources"),
+            # ✅ 리스트 형태로 정규화된 리소스 사용
+            risk_resources=analysis.get("risk_resources", []),
         )
         return saved
 
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"일기 저장 중 오류 발생: {str(e)}")
 
@@ -43,10 +47,12 @@ async def create_diary_route(
 # ==================================================
 # ✅ 사용자 전체 일기 조회
 # ==================================================
-@router.get("/diary", response_model=List[DiaryResponse])
+@router.get("", response_model=List[DiaryResponse])
 async def get_user_diaries_route(user_id: str = Depends(get_current_user_id)):
     try:
         return await diary_model.get_user_diaries(user_id)
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"일기 조회 중 오류 발생: {str(e)}")
 
@@ -54,7 +60,7 @@ async def get_user_diaries_route(user_id: str = Depends(get_current_user_id)):
 # ==================================================
 # ✅ 특정 날짜의 일기 조회 (YYYY-MM-DD)
 # ==================================================
-@router.get("/diary/by-date/{target_date}", response_model=DiaryResponse)
+@router.get("/by-date/{target_date}", response_model=DiaryResponse)
 async def get_diary_by_date_route(
     target_date: Date,
     user_id: str = Depends(get_current_user_id),
@@ -65,6 +71,8 @@ async def get_diary_by_date_route(
         if not diary:
             raise HTTPException(status_code=404, detail="해당 날짜의 일기를 찾을 수 없습니다.")
         return diary
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"일기 조회 중 오류 발생: {str(e)}")
 
@@ -72,7 +80,7 @@ async def get_diary_by_date_route(
 # ==================================================
 # ✅ 단일 일기 조회 (id 기준)
 # ==================================================
-@router.get("/diary/{diary_id}", response_model=DiaryResponse)
+@router.get("/{diary_id}", response_model=DiaryResponse)
 async def get_diary_by_id_route(
     diary_id: str,
     user_id: str = Depends(get_current_user_id),
@@ -86,7 +94,7 @@ async def get_diary_by_id_route(
 # ==================================================
 # ✅ 일기 수정 (id 기준)
 # ==================================================
-@router.put("/diary/{diary_id}", response_model=DiaryResponse)
+@router.put("/{diary_id}", response_model=DiaryResponse)
 async def update_diary_route(
     diary_id: str,
     diary: DiaryCreate,
@@ -97,6 +105,8 @@ async def update_diary_route(
         if not updated:
             raise HTTPException(status_code=404, detail="수정할 일기를 찾을 수 없습니다.")
         return updated
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"일기 수정 중 오류 발생: {str(e)}")
 
@@ -104,7 +114,7 @@ async def update_diary_route(
 # ==================================================
 # ✅ 일기 삭제 (id 기준)
 # ==================================================
-@router.delete("/diary/{diary_id}", summary="일기 삭제", description="특정 일기를 삭제합니다.")
+@router.delete("/{diary_id}", summary="일기 삭제", description="특정 일기를 삭제합니다.")
 async def delete_diary_route(
     diary_id: str,
     user_id: str = Depends(get_current_user_id),
@@ -114,5 +124,7 @@ async def delete_diary_route(
         if not deleted:
             raise HTTPException(status_code=404, detail="일기를 찾을 수 없습니다.")
         return {"message": "일기가 성공적으로 삭제되었습니다."}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"일기 삭제 중 오류 발생: {str(e)}")
