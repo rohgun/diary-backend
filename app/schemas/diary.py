@@ -1,3 +1,4 @@
+# app/schemas/diary.py
 from pydantic import BaseModel, Field
 from datetime import datetime
 from typing import Optional
@@ -6,6 +7,9 @@ from typing import Optional
 # ✅ 감정 구조 정의
 # ==================================================
 class EmotionDetail(BaseModel):
+    """
+    감정 정보 (사용자 선택 / AI 분석 결과)
+    """
     label: str
     emoji: str
 
@@ -14,12 +18,15 @@ class EmotionDetail(BaseModel):
 # ✅ 일기 작성 요청 스키마
 # ==================================================
 class DiaryCreate(BaseModel):
+    """
+    사용자가 새 일기를 작성할 때 요청 본문 구조
+    """
     date: datetime
     emotion: EmotionDetail
-    text: str = Field(..., min_length=15)
+    text: str = Field(..., min_length=15, description="일기 본문 (15자 이상 필수)")
 
     class Config:
-        json_schema_extra = {   # ✅ pydantic v2 스타일
+        json_schema_extra = {
             "example": {
                 "date": "2025-07-28T00:00:00",
                 "emotion": {
@@ -35,16 +42,20 @@ class DiaryCreate(BaseModel):
 # ✅ 일기 응답 스키마
 # ==================================================
 class DiaryResponse(BaseModel):
+    """
+    DB에 저장된 일기를 클라이언트로 반환할 때의 구조
+    """
     id: str
     user_id: str
     date: datetime
     text: str
-    emotion: EmotionDetail
-    analyzed_emotion: EmotionDetail
-    reason: str
-    score: int
-    feedback: str
-    risk_level: str = "none"              # ✅ 추가 (감정 위험 수준)
+    emotion: EmotionDetail                   # 사용자가 직접 선택한 감정
+    analyzed_emotion: EmotionDetail           # AI가 분석한 감정
+    reason: str                               # 분석 근거
+    score: int                                # 감정 강도 (1~10)
+    feedback: str                             # AI 피드백
+    risk_level: str = "none"
+    risk_resources: Optional[List[str]] = None  # ✅ 추가: 위험 감지 시 리소스 리스트
     created_at: Optional[datetime] = None
 
     class Config:

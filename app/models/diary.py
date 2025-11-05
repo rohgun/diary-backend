@@ -20,7 +20,7 @@ def get_diary_collection():
 def _to_datetime(v) -> datetime:
     """
     date/datetime/str 모두 안전하게 datetime으로 변환
-    (Mongo에서 date를 date/datetime으로 받을 수 있어 보강)
+    (Mongo에서 date가 date/datetime/str로 올 수 있어 보강)
     """
     if isinstance(v, datetime):
         return v
@@ -28,9 +28,11 @@ def _to_datetime(v) -> datetime:
         return datetime.combine(v, datetime.min.time())
     if isinstance(v, str):
         # ISO 문자열 가정
+        # e.g. "2025-11-05T00:00:00Z" -> +00:00
         return datetime.fromisoformat(v.replace("Z", "+00:00"))
-    # None 등 예외: 지금 시각으로 폴백 (문서 훼손 방지)
+    # None 등 예외: 지금 시각 폴백 (문서 훼손 방지)
     return datetime.utcnow()
+
 
 def serialize(d: dict) -> dict:
     return {
@@ -43,7 +45,8 @@ def serialize(d: dict) -> dict:
         "reason": d.get("reason", "분석 실패"),
         "score": d.get("score", 5),
         "feedback": d.get("feedback", "감정 분석에 실패했습니다."),
-        "risk_level": d.get("risk_level", "none"),           # ✅ 추가
+        "risk_level": d.get("risk_level", "none"),  # ✅ 위험도 저장/반환
+        "risk_resources": d.get("risk_resources"),
         "created_at": d.get("created_at"),
     }
 
@@ -59,6 +62,7 @@ async def create_diary(
     score: int,
     feedback: str,
     risk_level: str = "none",  # ✅ analyze_emotion() 결과에서 전달
+    risk_resources: list[str] | None = None,
 ) -> DiaryResponse:
     col = get_diary_collection()
 
@@ -70,7 +74,9 @@ async def create_diary(
     data["reason"] = reason
     data["score"] = score
     data["feedback"] = feedback
-    data["risk_level"] = risk_level          # ✅ 저장
+    data["risk_level"] = risk_level
+    if risk_resources:                        # ✅ 추가
+        data["risk_resources"] = risk_resources
     data["created_at"] = datetime.utcnow()
 
     # date 필드 정규화 (항상 datetime으로)

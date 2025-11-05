@@ -27,19 +27,47 @@ async def create_diary_route(
     user_id: str = Depends(get_current_user_id),
 ):
     try:
-        # OpenAI 기반 감정 분석
+        # 1) OpenAI 기반 감정 분석
         analysis = await analyze_emotion(diary.text)
+        # analysis 예시:
+        # {
+        #   "analyzed_emotion": {"label": "슬픔", "emoji": "😢"},
+        #   "reason": "...",
+        #   "score": 3,
+        #   "feedback": "...",
+        #   "risk_level": "none|watch|high"
+        # }
 
-        # DB 저장 (risk_level 포함)
-        return await create_diary(
-            user_id=user_id,
-            diary=diary,
-            analyzed_emotion=analysis["analyzed_emotion"],
-            reason=analysis["reason"],
-            score=analysis["score"],
-            feedback=analysis["feedback"],
-            risk_level=analysis.get("risk_level", "none"),  # ✅ 추가
-        )
+        # 2) DB 저장
+        # - models.create_diary()가 risk_level 파라미터를 받을 수 있게 업데이트 되어 있다면 함께 전달
+        # - 아직 반영 전이면 TypeError가 나므로 폴백으로 risk_level 없이 호출
+        risk_level = analysis.get("risk_level", "none")
+        try:
+            saved = await create_diary(
+                user_id=user_id,
+                diary=diary,
+                analyzed_emotion=analysis["analyzed_emotion"],
+                reason=analysis["reason"],
+                score=analysis["score"],
+                feedback=analysis["feedback"],
+                risk_level=analysis.get("risk_level", "none"),
+                risk_resources=analysis.get("resources"),  # 모델이 지원한다면 저장됨
+            )
+        except TypeError:
+            # 구버전 시그니처 폴백
+            saved = await create_diary(
+                user_id=user_id,
+                diary=diary,
+                analyzed_emotion=analysis["analyzed_emotion"],
+                reason=analysis["reason"],
+                score=analysis["score"],
+                feedback=analysis["feedback"],
+            )
+
+        return saved
+
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"일기 저장 중 오류 발생: {str(e)}")
 
@@ -58,20 +86,24 @@ async def get_user_diaries_route(
 
 
 # ==================================================
-# ✅ 특정 날짜의 일기 조회
-#   - path param은 date로 받고, 모델 함수에는 datetime으로 변환해 전달
+# ✅ 특정 날짜의 일기 조회 (YYYY-MM-DD)
+#   - path param은 date, 모델에는 datetime으로 변환
 # ==================================================
 @router.get("/diary/by-date/{target_date}", response_model=DiaryResponse)
 async def get_diary_by_date_route(
     target_date: Date,
     user_id: str = Depends(get_current_user_id),
 ):
-    # models.get_diary_by_date()는 datetime을 받도록 구현되어 있으므로 변환
-    target_dt = datetime.combine(target_date, datetime.min.time())
-    diary = await get_diary_by_date(user_id, target_dt)
-    if not diary:
-        raise HTTPException(status_code=404, detail="해당 날짜의 일기를 찾을 수 없습니다.")
-    return diary
+    try:
+        target_dt = datetime.combine(target_date, datetime.min.time())
+        diary = await get_diary_by_date(user_id, target_dt)
+        if not diary:
+            raise HTTPException(status_code=404, detail="해당 날짜의 일기를 찾을 수 없습니다.")
+        return diary
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"일기 조회 중 오류 발생: {str(e)}")
 
 
 # ==================================================
@@ -102,6 +134,8 @@ async def update_diary_route(
         if not updated:
             raise HTTPException(status_code=404, detail="수정할 일기를 찾을 수 없습니다.")
         return updated
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"일기 수정 중 오류 발생: {str(e)}")
 
@@ -115,9 +149,11 @@ async def delete_diary_route(
     user_id: str = Depends(get_current_user_id),
 ):
     try:
-        deleted = await delete_diary_by_id(user_id, diary_id)  # ✅ 사용자 검증 포함
+        deleted = await delete_diary_by_id(user_id, diary_id)  # 본인 소유만 삭제
         if not deleted:
             raise HTTPException(status_code=404, detail="일기를 찾을 수 없습니다.")
         return {"message": "일기가 성공적으로 삭제되었습니다."}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"일기 삭제 중 오류 발생: {str(e)}")

@@ -1,9 +1,15 @@
 from openai import OpenAI
 import os
-from dotenv import load_dotenv
 import json
-import re
+from dotenv import load_dotenv
 
+# 보조 서비스
+from app.services.resource import get_resources  # ✅ 새로 추가 (리스크별 리소스 제공)
+from app.services.safety import evaluate_risk_level  # ✅ 위험 수준 정제용 (있으면 사용, 없으면 무시해도 됨)
+
+# ==================================================
+# ✅ 환경 설정
+# ==================================================
 load_dotenv()
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
@@ -30,7 +36,7 @@ def format_sentence(text: str) -> str:
 
 
 # ==================================================
-# ✅ 감정 분석 + 위험 감정 감지
+# ✅ 감정 분석 + 위험 감정 감지 + 리소스 추천
 # ==================================================
 async def analyze_emotion(text: str) -> dict:
     system_prompt = (
@@ -45,7 +51,7 @@ async def analyze_emotion(text: str) -> dict:
         "}\n\n"
         "⚠️ 반드시 JSON 형식만 출력하세요.\n"
         "다른 문장은 출력하지 마세요.\n\n"
-        "※ 'risk_level'은 다음 기준으로 판단하세요:\n"
+        "※ 'risk_level' 기준:\n"
         "- 'high': 자살, 죽고 싶다, 끝내고 싶다, 삶을 포기, 해를 입히고 싶다 등의 표현이 명확히 있을 때\n"
         "- 'moderate': 극심한 무기력, 자책, 절망, '의욕이 없다', '너무 힘들다' 등의 반복적 표현\n"
         "- 'mild': 일시적인 우울, 지침, 피로감\n"
@@ -55,7 +61,7 @@ async def analyze_emotion(text: str) -> dict:
     user_prompt = f"일기 내용:\n{text}"
 
     try:
-        # ✅ GPT 감정 분석 요청
+        # ✅ GPT 감정 분석
         response = client.chat.completions.create(
             model="gpt-4o",
             messages=[
@@ -85,7 +91,7 @@ async def analyze_emotion(text: str) -> dict:
             score = 5
 
         # ==================================================
-        # ✅ 수동 백업 키워드 기반 위험 감정 감지 (보조용)
+        # ✅ 키워드 기반 백업 위험 감정 감지
         # ==================================================
         text_lower = text.lower()
         high_keywords = ["죽고 싶", "자살", "끝내고 싶", "없어지고 싶", "살기 싫", "그만 살고"]
@@ -96,6 +102,19 @@ async def analyze_emotion(text: str) -> dict:
         elif risk_level == "none" and any(kw in text_lower for kw in moderate_keywords):
             risk_level = "moderate"
 
+        # ✅ safety.py 로직과 병합 (선택적)
+        try:
+            refined = evaluate_risk_level(text, label, score)
+            if refined in ["high", "moderate", "mild"]:
+                risk_level = refined
+        except Exception:
+            pass
+
+        # ==================================================
+        # ✅ 위험 수준별 리소스 추천 추가
+        # ==================================================
+        risk_resources = get_resources(risk_level)
+
         # ==================================================
         # ✅ 최종 응답 구조
         # ==================================================
@@ -104,7 +123,8 @@ async def analyze_emotion(text: str) -> dict:
             "reason": reason,
             "score": score,
             "feedback": feedback,
-            "risk_level": risk_level
+            "risk_level": risk_level,
+            "risk_resources": risk_resources,
         }
 
     except Exception as e:
@@ -114,5 +134,6 @@ async def analyze_emotion(text: str) -> dict:
             "reason": "감정 분석에 실패했습니다.",
             "score": 5,
             "feedback": "오늘 하루도 수고 많으셨어요.",
-            "risk_level": "none"
+            "risk_level": "none",
+            "risk_resources": get_resources("none"),
         }
