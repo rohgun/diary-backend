@@ -1,3 +1,4 @@
+# app/services/emotion_analysis.py
 from openai import OpenAI
 import os
 import json
@@ -8,7 +9,7 @@ from dotenv import load_dotenv
 # --------------------------------------------------
 from app.services.resource import get_resources  # ✅ 리스크별 리소스 제공
 
-# safety.py가 선택적으로 있을 수 있으므로 안전하게 import
+# safety.py는 선택적이므로 안전하게 import 시도
 try:
     from app.services.safety import evaluate_risk_level  # ✅ 위험 수준 정제용
 except ImportError:
@@ -88,13 +89,23 @@ async def analyze_emotion(text: str) -> dict:
         print("🧠 GPT 응답 원문:\n", content)
 
         # --------------------------------------------------
-        # ✅ JSON 파싱 시 안전 처리
+        # ✅ JSON 파싱 전 코드블록 제거
+        # --------------------------------------------------
+        cleaned = (
+            content.strip()
+            .replace("```json", "")
+            .replace("```", "")
+            .strip()
+        )
+
+        # --------------------------------------------------
+        # ✅ JSON 안전 파싱
         # --------------------------------------------------
         try:
-            parsed = json.loads(content.strip())
-        except json.JSONDecodeError:
-            print("⚠️ GPT 응답 JSON 디코딩 실패, fallback 처리.")
-            parsed = {"label": "중립", "reason": "분석 실패", "score": 5, "feedback": "오늘도 수고했어요", "risk_level": "none"}
+            parsed = json.loads(cleaned)
+        except json.JSONDecodeError as e:
+            print(f"⚠️ GPT 응답 JSON 디코딩 실패: {e}")
+            raise ValueError("GPT JSON 파싱 실패")
 
         # --------------------------------------------------
         # ✅ 기본값 처리
