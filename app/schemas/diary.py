@@ -1,4 +1,3 @@
-# app/schemas/diary.py
 from pydantic import BaseModel, Field
 from datetime import datetime
 from typing import Optional, List
@@ -55,7 +54,7 @@ class DiaryResponse(BaseModel):
     score: int                                # 감정 강도 (1~10)
     feedback: str                             # AI 피드백
     risk_level: str = "none"
-    risk_resources: Optional[List[str]] = None  # ✅ 추가: 위험 감지 시 리소스 리스트
+    risk_resources: Optional[List[dict]] = None  # ✅ 수정됨 (리소스 객체 리스트)
     created_at: Optional[datetime] = None
 
     class Config:
@@ -71,6 +70,11 @@ class DiaryResponse(BaseModel):
                 "score": 3,
                 "feedback": "오늘은 스스로에게 휴식을 허락해 주세요.",
                 "risk_level": "moderate",
+                "risk_resources": [
+                    {"label": "자살예방상담 1393 (24시간)", "tel": "1393"},
+                    {"label": "정신건강위기 1588-9191", "tel": "1588-9191"},
+                    {"label": "국가트라우마센터", "url": "https://www.nct.go.kr"},
+                ],
                 "created_at": "2025-07-28T12:00:00"
             }
         }
