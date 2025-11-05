@@ -6,16 +6,18 @@ from datetime import date as Date, datetime
 from app.schemas.diary import DiaryCreate, DiaryResponse
 from app.services.emotion_analysis import analyze_emotion
 from app.auth.jwt import get_current_user_id
-from app.models import diary as diary_model  # 모델 계층
 
-# ✅ 여기서 prefix="/diary"로 고정하고, 엔드포인트들은 "/"부터 시작합니다.
-router = APIRouter(prefix="/diary", tags=["Diary"])
+# ✅ 안전한 모듈 임포트 방식 (속성 누락 이슈 방지)
+import app.models.diary as diary_model
+
+router = APIRouter(tags=["Diary"])
 
 
 # ==================================================
 # ✅ 일기 저장 (AI 감정 분석 포함)
+#   최종 경로: POST /diary/diary   (main에서 prefix="/diary" 이므로)
 # ==================================================
-@router.post("", response_model=DiaryResponse)
+@router.post("/diary", response_model=DiaryResponse)
 async def create_diary_route(
     diary: DiaryCreate,
     user_id: str = Depends(get_current_user_id),
@@ -33,8 +35,7 @@ async def create_diary_route(
             score=analysis.get("score", 5),
             feedback=analysis.get("feedback", ""),
             risk_level=analysis.get("risk_level", "none"),
-            # ✅ 리스트 형태로 정규화된 리소스 사용
-            risk_resources=analysis.get("risk_resources", []),
+            risk_resources=analysis.get("risk_resources"),
         )
         return saved
 
@@ -46,8 +47,9 @@ async def create_diary_route(
 
 # ==================================================
 # ✅ 사용자 전체 일기 조회
+#   최종 경로: GET /diary/diary
 # ==================================================
-@router.get("", response_model=List[DiaryResponse])
+@router.get("/diary", response_model=List[DiaryResponse])
 async def get_user_diaries_route(user_id: str = Depends(get_current_user_id)):
     try:
         return await diary_model.get_user_diaries(user_id)
@@ -59,8 +61,9 @@ async def get_user_diaries_route(user_id: str = Depends(get_current_user_id)):
 
 # ==================================================
 # ✅ 특정 날짜의 일기 조회 (YYYY-MM-DD)
+#   최종 경로: GET /diary/diary/by-date/{target_date}
 # ==================================================
-@router.get("/by-date/{target_date}", response_model=DiaryResponse)
+@router.get("/diary/by-date/{target_date}", response_model=DiaryResponse)
 async def get_diary_by_date_route(
     target_date: Date,
     user_id: str = Depends(get_current_user_id),
@@ -79,8 +82,9 @@ async def get_diary_by_date_route(
 
 # ==================================================
 # ✅ 단일 일기 조회 (id 기준)
+#   최종 경로: GET /diary/diary/{diary_id}
 # ==================================================
-@router.get("/{diary_id}", response_model=DiaryResponse)
+@router.get("/diary/{diary_id}", response_model=DiaryResponse)
 async def get_diary_by_id_route(
     diary_id: str,
     user_id: str = Depends(get_current_user_id),
@@ -93,8 +97,9 @@ async def get_diary_by_id_route(
 
 # ==================================================
 # ✅ 일기 수정 (id 기준)
+#   최종 경로: PUT /diary/diary/{diary_id}
 # ==================================================
-@router.put("/{diary_id}", response_model=DiaryResponse)
+@router.put("/diary/{diary_id}", response_model=DiaryResponse)
 async def update_diary_route(
     diary_id: str,
     diary: DiaryCreate,
@@ -113,8 +118,9 @@ async def update_diary_route(
 
 # ==================================================
 # ✅ 일기 삭제 (id 기준)
+#   최종 경로: DELETE /diary/diary/{diary_id}
 # ==================================================
-@router.delete("/{diary_id}", summary="일기 삭제", description="특정 일기를 삭제합니다.")
+@router.delete("/diary/{diary_id}", summary="일기 삭제", description="특정 일기를 삭제합니다.")
 async def delete_diary_route(
     diary_id: str,
     user_id: str = Depends(get_current_user_id),

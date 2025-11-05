@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 # --------------------------------------------------
 # 보조 서비스
 # --------------------------------------------------
-from app.services.resource import get_safety_resources  # ✅ 리스트로 합쳐주는 함수만 사용
+from app.services.resource import get_resources  # ✅ 리스크별 리소스 제공
 
 # safety.py는 선택적이므로 안전하게 import 시도
 try:
@@ -32,13 +32,24 @@ EMOTION_EMOJI_MAP = {
     "중립": "😐",
 }
 
+
+# --------------------------------------------------
+# ✅ 문장 마무리 보정
+# --------------------------------------------------
 def format_sentence(text: str) -> str:
     text = text.strip()
     if not text.endswith(("다", "요", ".", "!", "?")):
         return text + "."
     return text
 
+
+# --------------------------------------------------
+# ✅ 감정 분석 + 위험 감정 감지 + 리소스 추천
+# --------------------------------------------------
 async def analyze_emotion(text: str) -> dict:
+    """
+    사용자의 일기 텍스트를 분석하여 감정, 이유, 점수, 피드백, 위험 수준, 추천 리소스를 반환.
+    """
     system_prompt = (
         "당신은 감정 분석 전문가이자 심리 상담 보조 시스템입니다.\n"
         "사용자의 일기 내용을 분석하여 다음 정보를 반드시 JSON 형식으로 제공합니다:\n\n"
@@ -57,9 +68,13 @@ async def analyze_emotion(text: str) -> dict:
         "- 'mild': 일시적인 우울, 피로감\n"
         "- 'none': 위험 징후 없음"
     )
+
     user_prompt = f"일기 내용:\n{text}"
 
     try:
+        # --------------------------------------------------
+        # ✅ GPT 감정 분석 요청
+        # --------------------------------------------------
         response = client.chat.completions.create(
             model="gpt-4o",
             messages=[
@@ -71,36 +86,72 @@ async def analyze_emotion(text: str) -> dict:
         )
 
         content = response.choices[0].message.content
-        cleaned = content.strip().replace("```json", "").replace("```", "").strip()
+        print("🧠 GPT 응답 원문:\n", content)
 
+        # --------------------------------------------------
+        # ✅ JSON 파싱 전 코드블록 제거
+        # --------------------------------------------------
+        cleaned = (
+            content.strip()
+            .replace("```json", "")
+            .replace("```", "")
+            .strip()
+        )
+
+        # --------------------------------------------------
+        # ✅ JSON 안전 파싱
+        # --------------------------------------------------
         try:
             parsed = json.loads(cleaned)
         except json.JSONDecodeError as e:
-            raise ValueError(f"GPT JSON 파싱 실패: {e}")
+            print(f"⚠️ GPT 응답 JSON 디코딩 실패: {e}")
+            raise ValueError("GPT JSON 파싱 실패")
 
+        # --------------------------------------------------
+        # ✅ 기본값 처리
+        # --------------------------------------------------
         label = parsed.get("label", "중립")
         emoji = EMOTION_EMOJI_MAP.get(label, "😐")
         reason = format_sentence(parsed.get("reason", "분석 실패"))
         feedback = format_sentence(parsed.get("feedback", "감정을 정확히 인식하지 못했습니다."))
-        risk_level = (parsed.get("risk_level") or "none").lower()
+        risk_level = parsed.get("risk_level", "none").lower()
 
         try:
             score = int(round(float(parsed.get("score", 5))))
         except (ValueError, TypeError):
             score = 5
 
-        # 키워드/스코어 백업 규칙 보정
+        # --------------------------------------------------
+        # ✅ 키워드 기반 위험 감정 감지 (백업)
+        # --------------------------------------------------
+        text_lower = text.lower()
+        high_keywords = ["죽고 싶", "자살", "끝내고 싶", "없어지고 싶", "살기 싫", "그만 살고"]
+        moderate_keywords = ["너무 힘들", "지쳤", "무기력", "포기", "괴로워", "버티기 힘들"]
+
+        if any(kw in text_lower for kw in high_keywords):
+            risk_level = "high"
+        elif risk_level == "none" and any(kw in text_lower for kw in moderate_keywords):
+            risk_level = "moderate"
+
+        # --------------------------------------------------
+        # ✅ safety.py 위험도 평가 결과 반영 (선택적)
+        # --------------------------------------------------
         if evaluate_risk_level:
             try:
                 refined = evaluate_risk_level(text, label, score)
-                if refined in ["high", "moderate", "mild", "none"]:
+                if refined in ["high", "moderate", "mild"]:
                     risk_level = refined
-            except Exception:
-                pass
+            except Exception as e:
+                print(f"⚠️ evaluate_risk_level 호출 실패: {e}")
 
-        # ✅ 리스트 형태로 합쳐진 리소스를 반환 (스키마와 일치)
-        risk_resources = get_safety_resources(risk_level)
+        # --------------------------------------------------
+        # ✅ 리스크별 리소스 추천 추가
+        # --------------------------------------------------
+        risk_resources = get_resources(risk_level)
 
+        # --------------------------------------------------
+        # ✅ 최종 반환 구조
+        # --------------------------------------------------
         return {
             "analyzed_emotion": {"label": label, "emoji": emoji},
             "reason": reason,
@@ -110,13 +161,13 @@ async def analyze_emotion(text: str) -> dict:
             "risk_resources": risk_resources,
         }
 
-    except Exception:
-        # ✅ 실패 시에도 스키마 보장
+    except Exception as e:
+        print("❌ 감정 분석 실패:", str(e))
         return {
             "analyzed_emotion": {"label": "중립", "emoji": "😐"},
             "reason": "감정 분석에 실패했습니다.",
             "score": 5,
             "feedback": "오늘 하루도 수고 많으셨어요.",
             "risk_level": "none",
-            "risk_resources": get_safety_resources("none"),
+            "risk_resources": get_resources("none"),
         }
