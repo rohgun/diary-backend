@@ -1,11 +1,12 @@
+# app/models/diary.py
 from app.db.mongo import db
 from app.schemas.diary import DiaryCreate, DiaryResponse
-from datetime import datetime
+from datetime import datetime, date as _date
 from typing import List, Optional
 from bson import ObjectId
 
 # ==================================================
-# ✅ 안전한 컬렉션 접근 함수
+# ✅ 안전한 컬렉션 접근
 # ==================================================
 def get_diary_collection():
     if db is None:
@@ -14,19 +15,35 @@ def get_diary_collection():
 
 
 # ==================================================
-# ✅ MongoDB → DiaryResponse 변환용 serialize 함수
+# ✅ 직렬화: Mongo 문서 -> DiaryResponse dict
 # ==================================================
+def _to_datetime(v) -> datetime:
+    """
+    date/datetime/str 모두 안전하게 datetime으로 변환
+    (Mongo에서 date를 date/datetime으로 받을 수 있어 보강)
+    """
+    if isinstance(v, datetime):
+        return v
+    if isinstance(v, _date):
+        return datetime.combine(v, datetime.min.time())
+    if isinstance(v, str):
+        # ISO 문자열 가정
+        return datetime.fromisoformat(v.replace("Z", "+00:00"))
+    # None 등 예외: 지금 시각으로 폴백 (문서 훼손 방지)
+    return datetime.utcnow()
+
 def serialize(d: dict) -> dict:
     return {
         "id": str(d["_id"]),
         "user_id": d["user_id"],
-        "date": d["date"] if isinstance(d["date"], datetime) else datetime.fromisoformat(str(d["date"])),
-        "text": d["text"],
+        "date": _to_datetime(d.get("date")),
+        "text": d.get("text", ""),
         "emotion": d.get("emotion", {"label": "알수없음", "emoji": "❓"}),
         "analyzed_emotion": d.get("analyzed_emotion", {"label": "분석실패", "emoji": "❓"}),
         "reason": d.get("reason", "분석 실패"),
         "score": d.get("score", 5),
         "feedback": d.get("feedback", "감정 분석에 실패했습니다."),
+        "risk_level": d.get("risk_level", "none"),           # ✅ 추가
         "created_at": d.get("created_at"),
     }
 
@@ -41,101 +58,96 @@ async def create_diary(
     reason: str,
     score: int,
     feedback: str,
+    risk_level: str = "none",  # ✅ analyze_emotion() 결과에서 전달
 ) -> DiaryResponse:
-    diary_collection = get_diary_collection()
+    col = get_diary_collection()
 
-    data = diary.dict()
+    # Pydantic 모델 → dict
+    data = diary.model_dump()
     data["user_id"] = user_id
-    data["emotion"] = diary.emotion.dict()
+    data["emotion"] = diary.emotion.model_dump()
     data["analyzed_emotion"] = analyzed_emotion
     data["reason"] = reason
     data["score"] = score
     data["feedback"] = feedback
+    data["risk_level"] = risk_level          # ✅ 저장
     data["created_at"] = datetime.utcnow()
 
-    result = await diary_collection.insert_one(data)
-    data["_id"] = result.inserted_id
+    # date 필드 정규화 (항상 datetime으로)
+    data["date"] = _to_datetime(data.get("date"))
+
+    res = await col.insert_one(data)
+    data["_id"] = res.inserted_id
     return DiaryResponse(**serialize(data))
 
 
 # ==================================================
-# ✅ 사용자 전체 일기 조회
+# ✅ 사용자 전체 일기 조회 (최신순)
 # ==================================================
 async def get_user_diaries(user_id: str) -> List[DiaryResponse]:
-    diary_collection = get_diary_collection()
-    diaries = []
-    async for doc in diary_collection.find({"user_id": user_id}).sort("date", -1):
-        diaries.append(DiaryResponse(**serialize(doc)))
-    return diaries
+    col = get_diary_collection()
+    items: List[DiaryResponse] = []
+    async for doc in col.find({"user_id": user_id}).sort("date", -1):
+        items.append(DiaryResponse(**serialize(doc)))
+    return items
 
 
 # ==================================================
-# ✅ 특정 ID로 일기 조회
+# ✅ 특정 ID로 일기 조회 (본인 것만)
 # ==================================================
 async def get_diary_by_id(user_id: str, diary_id: str) -> Optional[DiaryResponse]:
-    diary_collection = get_diary_collection()
+    col = get_diary_collection()
     try:
-        diary = await diary_collection.find_one({
-            "_id": ObjectId(diary_id),
-            "user_id": user_id
-        })
-        if diary:
-            return DiaryResponse(**serialize(diary))
-        return None
+        doc = await col.find_one({"_id": ObjectId(diary_id), "user_id": user_id})
+        return DiaryResponse(**serialize(doc)) if doc else None
     except Exception as e:
         print(f"❌ get_diary_by_id 오류: {e}")
         return None
 
 
 # ==================================================
-# ✅ 특정 날짜의 일기 조회
+# ✅ 특정 날짜의 일기 조회 (정확 일치)
 # ==================================================
 async def get_diary_by_date(user_id: str, target_date: datetime) -> Optional[DiaryResponse]:
-    diary_collection = get_diary_collection()
-
-    doc = await diary_collection.find_one({
-        "user_id": user_id,
-        "date": target_date,
-    })
-
-    if doc:
-        return DiaryResponse(**serialize(doc))
-    return None
+    col = get_diary_collection()
+    target = _to_datetime(target_date)
+    doc = await col.find_one({"user_id": user_id, "date": target})
+    return DiaryResponse(**serialize(doc)) if doc else None
 
 
 # ==================================================
-# ✅ 일기 삭제
+# ✅ 일기 삭제 (본인 것만)
 # ==================================================
-async def delete_diary_by_id(diary_id: str) -> bool:
-    diary_collection = get_diary_collection()
-    result = await diary_collection.delete_one({"_id": ObjectId(diary_id)})
-    return result.deleted_count > 0
+async def delete_diary_by_id(user_id: str, diary_id: str) -> bool:
+    col = get_diary_collection()
+    res = await col.delete_one({"_id": ObjectId(diary_id), "user_id": user_id})
+    return res.deleted_count > 0
 
 
 # ==================================================
-# ✅ 일기 수정 (UPDATE)
+# ✅ 일기 수정 (본문/감정/날짜만 갱신)
 # ==================================================
 async def update_diary_by_id(user_id: str, diary_id: str, diary: DiaryCreate) -> Optional[DiaryResponse]:
     """
-    DiaryCreate(datetime, emotion, text)에 맞춰 수정
+    DiaryCreate(date, emotion, text)에 맞춰 수정
     """
-    diary_collection = get_diary_collection()
+    col = get_diary_collection()
 
     update_data = {
-        "date": diary.date,
-        "emotion": diary.emotion.dict(),
+        "date": _to_datetime(diary.date),
+        "emotion": diary.emotion.model_dump(),
         "text": diary.text,
     }
 
-    result = await diary_collection.update_one(
+    res = await col.update_one(
         {"_id": ObjectId(diary_id), "user_id": user_id},
         {"$set": update_data}
     )
 
-    if result.modified_count == 0:
+    if res.matched_count == 0:
+        # 존재X 또는 본인 소유 아님
         return None
 
-    updated = await diary_collection.find_one({"_id": ObjectId(diary_id)})
-    if updated:
-        return DiaryResponse(**serialize(updated))
-    return None
+    # modified_count가 0이어도 값 동일 가능 → 다시 조회해 반환
+    updated = await col.find_one({"_id": ObjectId(diary_id), "user_id": user_id})
+    return DiaryResponse(**serialize(updated)) if updated else None
