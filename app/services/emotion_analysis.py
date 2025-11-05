@@ -7,7 +7,8 @@ from dotenv import load_dotenv
 # --------------------------------------------------
 # 보조 서비스
 # --------------------------------------------------
-from app.services.resource import get_resources  # ✅ 리스크별 리소스 제공
+# ✅ 리소스를 평탄화된 리스트(List[dict])로 제공
+from app.services.resource import get_safety_resources
 
 # safety.py는 선택적이므로 안전하게 import 시도
 try:
@@ -49,6 +50,7 @@ def format_sentence(text: str) -> str:
 async def analyze_emotion(text: str) -> dict:
     """
     사용자의 일기 텍스트를 분석하여 감정, 이유, 점수, 피드백, 위험 수준, 추천 리소스를 반환.
+    risk_resources는 List[dict] 형태로 반환합니다.
     """
     system_prompt = (
         "당신은 감정 분석 전문가이자 심리 상담 보조 시스템입니다.\n"
@@ -145,9 +147,9 @@ async def analyze_emotion(text: str) -> dict:
                 print(f"⚠️ evaluate_risk_level 호출 실패: {e}")
 
         # --------------------------------------------------
-        # ✅ 리스크별 리소스 추천 추가
+        # ✅ 리스크별 리소스 추천 추가 (리스트 형태)
         # --------------------------------------------------
-        risk_resources = get_resources(risk_level)
+        risk_resources = get_safety_resources(risk_level)
 
         # --------------------------------------------------
         # ✅ 최종 반환 구조
@@ -158,7 +160,7 @@ async def analyze_emotion(text: str) -> dict:
             "score": score,
             "feedback": feedback,
             "risk_level": risk_level,
-            "risk_resources": risk_resources,
+            "risk_resources": risk_resources,  # List[dict]
         }
 
     except Exception as e:
@@ -169,5 +171,5 @@ async def analyze_emotion(text: str) -> dict:
             "score": 5,
             "feedback": "오늘 하루도 수고 많으셨어요.",
             "risk_level": "none",
-            "risk_resources": get_resources("none"),
+            "risk_resources": get_safety_resources("none"),  # List[dict]
         }

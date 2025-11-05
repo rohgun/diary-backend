@@ -15,7 +15,7 @@ def get_diary_collection():
 
 
 # ==================================================
-# ✅ 직렬화: Mongo 문서 -> DiaryResponse dict
+# ✅ 유틸: date/str → datetime 정규화
 # ==================================================
 def _to_datetime(v) -> datetime:
     """
@@ -34,6 +34,31 @@ def _to_datetime(v) -> datetime:
     return datetime.utcnow()
 
 
+# ==================================================
+# ✅ 유틸: risk_resources 정규화 (dict → list 평탄화)
+# ==================================================
+def _normalize_risk_resources(val):
+    """
+    - dict({"hotlines":[], "links":[], "quick_calm":[]}) → 리스트로 평탄화
+    - 이미 리스트면 dict 항목만 필터링하여 반환
+    - 그 외 타입은 None
+    """
+    if isinstance(val, dict):
+        out = []
+        for k in ("hotlines", "links", "quick_calm"):
+            items = val.get(k, [])
+            if isinstance(items, list):
+                out.extend([i for i in items if isinstance(i, dict)])
+        return out or None
+    if isinstance(val, list):
+        out = [i for i in val if isinstance(i, dict)]
+        return out or None
+    return None
+
+
+# ==================================================
+# ✅ 직렬화: Mongo 문서 -> DiaryResponse dict
+# ==================================================
 def serialize(d: dict) -> dict:
     return {
         "id": str(d["_id"]),
@@ -46,7 +71,7 @@ def serialize(d: dict) -> dict:
         "score": d.get("score", 5),
         "feedback": d.get("feedback", "감정 분석에 실패했습니다."),
         "risk_level": d.get("risk_level", "none"),  # ✅ 위험도 저장/반환
-        "risk_resources": d.get("risk_resources"),
+        "risk_resources": _normalize_risk_resources(d.get("risk_resources")),
         "created_at": d.get("created_at"),
     }
 
@@ -61,8 +86,8 @@ async def create_diary(
     reason: str,
     score: int,
     feedback: str,
-    risk_level: str = "none",  # ✅ analyze_emotion() 결과에서 전달
-    risk_resources: list[str] | None = None,
+    risk_level: str = "none",                 # ✅ analyze_emotion() 결과에서 전달
+    risk_resources: List[dict] | None = None, # ✅ 타입 정정: List[dict]
 ) -> DiaryResponse:
     col = get_diary_collection()
 
@@ -75,8 +100,8 @@ async def create_diary(
     data["score"] = score
     data["feedback"] = feedback
     data["risk_level"] = risk_level
-    if risk_resources:                        # ✅ 추가
-        data["risk_resources"] = risk_resources
+    if risk_resources is not None:                   # ✅ 항상 정규화 후 저장
+        data["risk_resources"] = _normalize_risk_resources(risk_resources)
     data["created_at"] = datetime.utcnow()
 
     # date 필드 정규화 (항상 datetime으로)
